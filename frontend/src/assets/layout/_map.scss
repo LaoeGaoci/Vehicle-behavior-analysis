@@ -9,7 +9,7 @@
     border-radius: 5px;
     z-index: 500; /* 确保信息框在地图之上 */
     
-        .start-end{
+        .car-search{
             margin-top: 20px;
             display:flex;
             flex-direction: column;
@@ -21,23 +21,17 @@
                 flex-direction: column;
                 width: 100%;
             }
-            .start{
+            .date{
                 display:flex;
                 flex-direction: row;
                 gap: 2px; /* 子元素之间的间距 */
                 align-items: center; /* 确保子元素水平居中对齐 */
             }
-            .end{
-                display:flex;
-                flex-direction: row;
-                gap: 2px; /* 子元素之间的间距 */
-                align-items: center; /* 确保子元素水平居中对齐 */
-            }
-            .waypoints{
+            .vehicles{
                 display:flex;
                 flex-direction: column;
                 gap: 30px; /* 子元素之间的间距 */
-                .waypoint{
+                .vehicle{
                     display:flex;
                     flex-direction: row;
                     gap: 4px; /* 子元素之间的间距 */
@@ -56,12 +50,6 @@
             .functionButtons{
                 display:flex;
                 flex-direction: row;
-                gap: 20px;
-            }
-            .twoPointTabButtons{
-                display:flex;
-                flex-direction: row;
-                margin-top: 20px;
                 gap: 20px;
             }
         }

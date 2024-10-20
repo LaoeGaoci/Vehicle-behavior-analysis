@@ -9,11 +9,11 @@ const router = createRouter({
       path: '/',
       component: AppLayout,
       children: [
-        // {
-        //   path: '/',
-        //   name: 'dashboard',
-        //   component: () => import('@/components/CurrentMap.vue')
-        // },
+        {
+          path: '/',
+          name: 'dashboard',
+          component: () => import('@/components/Map.vue')
+        },
       ]
     },
   ]
