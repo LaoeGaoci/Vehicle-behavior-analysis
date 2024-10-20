@@ -11,10 +11,9 @@ public class Vehicle {
     @TableId
     private Integer vehicleId;
 
+    private Integer vClass;
+
     private float vLength;
 
     private float vWidth;
-
-    private Integer vClass;
-
 }
