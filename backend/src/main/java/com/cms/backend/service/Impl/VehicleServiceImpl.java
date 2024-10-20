@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.cms.backend.mapper.VehicleMapper;
 import com.cms.backend.pojo.Vehicle;
 import com.cms.backend.service.VehicleService;
+import org.springframework.stereotype.Service;
 
+@Service
 public class VehicleServiceImpl extends ServiceImpl<VehicleMapper, Vehicle> implements VehicleService {
 
 }
