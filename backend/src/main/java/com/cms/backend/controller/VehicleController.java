@@ -5,6 +5,8 @@ import com.cms.backend.pojo.Frame;
 import com.cms.backend.pojo.Vehicle;
 import com.cms.backend.service.FrameService;
 import com.cms.backend.service.VehicleService;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -28,7 +30,8 @@ public class VehicleController {
     }
 
     @GetMapping(value = "/vehicle-data-list")
-    public ResponseEntity<List<DataList>> getUserInfo() {
+    public ResponseEntity<VehicleDataList> getUserInfo() {
+
         // 查询所有 Vehicle 的需要列（需要的列有vehicleId，vClass，vLength，vWidth）
         List<Vehicle> vehicles = vehicleService.list(
                 new LambdaQueryWrapper<Vehicle>().select(Vehicle::getVehicleId, Vehicle::getVClass, Vehicle::getVLength, Vehicle::getVWidth)
@@ -39,72 +42,85 @@ public class VehicleController {
                 new LambdaQueryWrapper<Frame>().select(Frame::getVehicleId, Frame::getGlobalTime, Frame::getLaneId, Frame::getVelocity, Frame::getAcceleration, Frame::getGlobalX, Frame::getGlobalY)
         );
 
-        // 构建 DataList 列表
         List<DataList> dataLists = new ArrayList<>();
 
         // 将所有车辆与对应的帧组合
         for (Vehicle vehicle : vehicles) {
+            List<FrameData> frameDataList = new ArrayList<>();
+            List<PathData> pathDataList = new ArrayList<>();
+
             for (Frame frame : frames) {
                 if (frame.getVehicleId().equals(vehicle.getVehicleId())) {
-                    DataList dataList = new DataList(vehicle, frame);
-                    dataLists.add(dataList);
+                    FrameData frameData = new FrameData(frame.getGlobalTime(), frame.getLaneId(), frame.getVelocity(), frame.getAcceleration());
+                    frameDataList.add(frameData);
+                    PathData pathData = new PathData(frame.getGlobalX(), frame.getGlobalY());
+                    pathDataList.add(pathData);
                 }
             }
+
+            DataList dataList = new DataList(vehicle.getVehicleId(), vehicle.getVClass(), vehicle.getVLength(), vehicle.getVWidth(), frameDataList, pathDataList);
+            dataLists.add(dataList);
         }
 
-        return ResponseEntity.ok(dataLists);
+        VehicleDataList vehicleDataList = new VehicleDataList(dataLists);
+
+        return ResponseEntity.ok(vehicleDataList);
     }
 
     @Data
+    @AllArgsConstructor
     public static class FrameData {
+
         private String globalTime;
+
         private Integer laneId;
+
         private float velocity;
+
         private float acceleration;
+
     }
 
     @Data
+    @AllArgsConstructor
     public static class PathData {
+
         private float globalX;
+
         private float globalY;
+
     }
 
-
     @Data
+    @AllArgsConstructor
     public static class DataList {
-        public DataList(Vehicle vehicle, Frame frame) {
-            this.vehicleId = vehicle.getVehicleId();
-            this.vClass = vehicle.getVClass();
-            this.vLength = vehicle.getVLength();
-            this.vWidth = vehicle.getVWidth();
 
-            // 创建 FrameData 实例并添加到 frame 列表
-            FrameData frameData = new FrameData();
-            frameData.setGlobalTime(frame.getGlobalTime());
-            frameData.setLaneId(frame.getLaneId());
-            frameData.setVelocity(frame.getVelocity());
-            frameData.setAcceleration(frame.getAcceleration());
-            this.frame = new ArrayList<>(); // 初始化列表
-            this.frame.add(frameData);
-
-            // 创建 PathData 实例并添加到 path 列表
-            PathData pathData = new PathData();
-            pathData.setGlobalX(frame.getGlobalX());
-            pathData.setGlobalY(frame.getGlobalY());
-            this.path = new ArrayList<>(); // 初始化列表
-            this.path.add(pathData);
-        }
-
+        @JsonProperty("vehicleId")
         private Integer vehicleId;
 
+        @JsonProperty("vClass")
         private Integer vClass;
 
+        @JsonProperty("vLength")
         private float vLength;
 
+        @JsonProperty("vWidth")
         private float vWidth;
 
+        @JsonProperty("frame")
         private List<FrameData> frame;
 
+        @JsonProperty("path")
         private List<PathData> path;
+
     }
+
+    @Data
+    @AllArgsConstructor
+    public static class VehicleDataList {
+
+        private List<DataList> vehicleDataList;
+
+    }
+
 }
