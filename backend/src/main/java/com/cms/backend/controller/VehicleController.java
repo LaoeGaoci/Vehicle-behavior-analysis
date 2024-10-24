@@ -11,6 +11,7 @@ import lombok.Data;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import java.util.List;
 
 @Validated
 @RestController
+@RequestMapping("/vehicle")
 public class VehicleController {
 
     private final VehicleService vehicleService;
@@ -29,7 +31,7 @@ public class VehicleController {
         this.frameService = frameService;
     }
 
-    @GetMapping(value = "/vehicle-data-list")
+    @GetMapping(value = "/data-list")
     public ResponseEntity<VehicleDataList> getUserInfo() {
 
         // 查询所有 Vehicle 的需要列（需要的列有vehicleId，vClass，vLength，vWidth）
