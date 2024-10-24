@@ -13,8 +13,10 @@ const vehicles = ref([]);
 const selected_date = ref(null);
 const filtered_date = ref([]);
 const operationVisible = ref(true);
-const vehicleSpeed = 1000; // 车辆移动速度，单位为毫秒
+
 const toast = useToast();
+
+const trajectories = ref([]);
 onMounted(() => {
   // 初始化 Leaflet 地图
   map.value = L.map(mapContainer.value, {
@@ -24,135 +26,109 @@ onMounted(() => {
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
   }).addTo(map.value);
+});
 
-  // 添加初始标记
-  let marker = L.marker([31.2304, 121.4737])
-    .addTo(map.value)
-    .bindPopup('这里是上海市中心')
-    .openPopup();
-
-  // 点击地图时更新标记位置
-  map.value.on('click', (e) => {
-    const { lat, lng } = e.latlng;
-    marker.setLatLng([lat, lng]);
-    marker.bindPopup(`纬度: ${lat}, 经度: ${lng}`).openPopup();
-  });
-
-  // 为 Leaflet 地图添加 D3.js SVG 覆盖层以绘制路径
-  const svg = d3.select(map.value.getPanes().overlayPane).append("svg")
-    .attr("class", "leaflet-zoom-hide");
-  const g = svg.append("g").attr("class", "leaflet-zoom-hide");
-
-  // 更新 SVG 大小和位置
-  function resetSvgBounds() {
-    const bounds = map.value.getBounds();
-    const topLeft = map.value.latLngToLayerPoint(bounds.getNorthWest());
-    const bottomRight = map.value.latLngToLayerPoint(bounds.getSouthEast());
-    svg.style("width", `${bottomRight.x - topLeft.x}px`)
-       .style("height", `${bottomRight.y - topLeft.y}px`)
-       .style("left", `${topLeft.x}px`)
-       .style("top", `${topLeft.y}px`);
-    g.attr("transform", `translate(${-topLeft.x}, ${-topLeft.y})`);
+const searchDailyCarTrail = async () => {
+  if (!selected_date.value) {
+    // 如果没有选择日期，则弹出提示
+    console.error('请选择日期');
+    return;
   }
 
-  // 示例车辆轨迹数据
-  const trajectories = [
-    [
-      [31.2304, 121.4737],
-      [31.2310, 121.4740],
-      [31.2320, 121.4750],
-    ],
-    [
-      [31.2304, 121.4737],
-      [31.2295, 121.4725],
-      [31.2280, 121.4700],
-    ],
-  ];
+  try {
+    // 发起请求，请求指定日期的车辆轨迹数据
+    const response = await axios.get(`http://localhost:8080/vehicle/trajectories`, {
+      params: {
+        date: selected_date.value
+      }
+    });
 
-  // 将纬度/经度投影到 Leaflet 地图的图层点的函数
-  function projectPoint(lat, lng) {
-    return map.value.latLngToLayerPoint(new L.LatLng(lat, lng));
+    // 将返回的轨迹数据中的路径赋值给 trajectories，并按日期排序
+    trajectories.value = response.data.vehicleDataList.sort((a, b) => a.frame[0].globalTime - b.frame[0].globalTime)
+      .map(vehicle => ({
+        path: vehicle.path.map(point => [point.globalX, point.globalY]),
+        globalTime: vehicle.frame[0].globalTime
+      }));
+
+    // 使用返回的数据逐个更新 Leaflet 地图上的车辆轨迹
+    animateVehicles();
+  } catch (error) {
+    console.error('获取车辆轨迹失败:', error);
+  }
+};
+
+const animateVehicles = () => {
+  if (!map.value) {
+    console.error('地图尚未初始化');
+    return;
   }
 
-  // 使用 D3 绘制车辆轨迹
-  trajectories.forEach((trajectory, index) => {
-    const path = g
-      .append("path")
+  // 使用 Leaflet SVG 图层来绘制路径
+  L.svg().addTo(map.value);
+  const svgLayer = d3.select(map.value.getPanes().overlayPane).select('svg');
+  const g = svgLayer.append('g');
+
+  // 按顺序逐个车辆绘制动画
+  const animateNextVehicle = (index = 0) => {
+    if (index >= trajectories.value.length) return;
+
+    const { path: trajectory, globalTime } = trajectories.value[index];
+
+    // 添加车辆路径
+    const path = g.append('path')
       .datum(trajectory)
-      .attr("fill", "none")
-      .attr("stroke", d3.schemeCategory10[index % 10])
-      .attr("stroke-width", 4)
-      .attr("stroke-opacity", 0.8)
-      .attr("filter", "drop-shadow(0 0 5px #ff0)")
-      .attr("class", "vehicle-path");
+      .attr('fill', 'none')
+      .attr('stroke', d3.schemeCategory10[index % 10])
+      .attr('stroke-width', 4)
+      .attr('stroke-opacity', 0.8)
+      .attr('filter', 'drop-shadow(0 0 5px #ff0)')
+      .attr('class', 'vehicle-path');
 
-    // 在地图视图重置时更新路径坐标
     function updatePath() {
-      const line = d3
-        .line()
-        .x((d) => projectPoint(d[0], d[1]).x)
-        .y((d) => projectPoint(d[0], d[1]).y)
+      const line = d3.line()
+        .x((d) => map.value.latLngToLayerPoint(new L.LatLng(d[0], d[1])).x)
+        .y((d) => map.value.latLngToLayerPoint(new L.LatLng(d[0], d[1])).y)
         .curve(d3.curveLinear);
-      path.attr("d", line);
+      path.attr('d', line);
     }
 
-    map.value.on("moveend", () => {
-      updatePath();
-      resetSvgBounds();
-    });
-    map.value.on("zoomend", () => {
-      updatePath();
-      resetSvgBounds();
-    });
+    map.value.on('zoomend', updatePath);
+    map.value.on('moveend', updatePath);
     updatePath();
-    resetSvgBounds();
-
-    // 动画显示车辆沿路径移动
-    function animateVehicle() {
-      const totalLength = path.node().getTotalLength();
-      path
-        .attr("stroke-dasharray", totalLength + " " + totalLength)
-        .attr("stroke-dashoffset", totalLength)
-        .transition()
-        .duration(vehicleSpeed * 5) // 使用车辆速度调整动画时间
-        .ease(d3.easeLinear)
-        .attr("stroke-dashoffset", 0)
-        .on("end", () => {
-          setTimeout(animateVehicle, 1000); // 动画结束后延迟重新开始
-        });
-    }
 
     // 添加车辆标记并进行动画
-    const vehicleMarker = g.append("circle")
-      .attr("r", 6)
-      .attr("fill", d3.schemeCategory10[index % 10])
-      .attr("class", "vehicle-marker");
+    const vehicleMarker = g.append('circle')
+      .attr('r', 6)
+      .attr('fill', d3.schemeCategory10[index % 10])
+      .attr('class', 'vehicle-marker');
 
-    function animateMarker() {
-      const points = trajectory;
-      let i = 0;
-
-      function move() {
-        if (i >= points.length) {
-          i = 0;
-          setTimeout(move, 1000);
-          return;
-        }
-
-        const projectedPoint = map.value.latLngToLayerPoint([points[i][0], points[i][1]]);
-        vehicleMarker
-          .attr("cx", projectedPoint.x)
-          .attr("cy", projectedPoint.y);
-        i++;
-        setTimeout(move, vehicleSpeed / 2); // 使用车辆速度调整标记移动速度
+    let i = 0;
+    const moveMarker = () => {
+      if (i >= trajectory.length) {
+        // 动画完成后，开始下一个车辆的动画
+        setTimeout(() => animateNextVehicle(index + 1), 1000); // 使用 globalTime 控制车辆动画间隔
+        return;
       }
-      move();
-    }
 
-    animateVehicle();
-    animateMarker();
-  });
-});
+      const projectedPoint = map.value.latLngToLayerPoint(new L.LatLng(trajectory[i][0], trajectory[i][1]));
+      vehicleMarker
+        .attr('cx', projectedPoint.x)
+        .attr('cy', projectedPoint.y);
+      i++;
+      setTimeout(moveMarker, 500); // 调整每个点的动画间隔时间
+    };
+
+    moveMarker();
+  };
+
+  animateNextVehicle();
+};
+
+
+
+
+
+
 const addCar = () => {
   vehicles.value.push({
     selectedItem: null,
@@ -201,7 +177,6 @@ const showHistory = async () => {
 };
 // 删除单条历史记录
 const deleteHistoryRecord = async (record) => {
-  console.log("删除第" + record.tree_line_search_id + "号林荫道数据")
   try {
     await axios.delete(`http://localhost:8080/history/delete`, {
       data: {
@@ -218,7 +193,7 @@ const deleteHistoryRecord = async (record) => {
 
 // 清空所有历史记录
 const clearHistory = async () => {
-  console.log("执行林荫道数据清空");
+  console.log("执行数据清空");
   try {
     await axios.delete(`http://localhost:8080/history/deleteAll`, {
 
@@ -258,7 +233,7 @@ const clearHistory = async () => {
               </div>
             </div>
             <div class="buttons">
-              <Button label="搜索迹踪" icon="pi pi-search" style="width: 120.33px;" @click="searchCarTrail" />
+              <Button label="搜索迹踪" icon="pi pi-search" style="width: 120.33px;" @click="searchDailyCarTrail" />
               <Button label="历史记录" icon="pi pi-warehouse" style="width: 120.33px;" @click="showHistory" />
               <Toast />
             </div>
