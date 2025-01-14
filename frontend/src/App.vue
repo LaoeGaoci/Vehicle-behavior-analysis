@@ -1,7 +1,10 @@
-<script setup></script>
+<script setup>
+import MainScene from './components/MainScene.vue'
+</script>
 
 <template>
-  <router-view />
+  <main>
+    <MainScene />
+  </main>
 </template>
 
-<style scoped></style>

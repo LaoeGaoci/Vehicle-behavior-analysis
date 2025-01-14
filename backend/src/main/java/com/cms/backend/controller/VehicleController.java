@@ -51,6 +51,7 @@ public class VehicleController {
             List<FrameData> frameDataList = new ArrayList<>();
             List<PathData> pathDataList = new ArrayList<>();
 
+
             for (Frame frame : frames) {
                 if (frame.getVehicleId().equals(vehicle.getVehicleId())) {
                     FrameData frameData = new FrameData(frame.getGlobalTime(), frame.getLaneId(), frame.getVelocity(), frame.getAcceleration());
