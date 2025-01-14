@@ -28,7 +28,3 @@ coverage
 *.sw?
 
 *.tsbuildinfo
-
-public/map
-
-/public/path/
