@@ -34,6 +34,9 @@ public class VehicleController {
 
     @GetMapping(value = "/change-list")
     public ResponseEntity<ChangeEventList> getChangeEventList(@RequestParam Integer number, @RequestParam float distanceThreshold) {
+        System.out.println("Number: " + number);
+        System.out.println("DistanceThreshold: " + distanceThreshold);
+
         // 查询所有帧数据并按 globalTime 排序
         List<Frame> frames = frameService.list(
                 new LambdaQueryWrapper<Frame>().select(Frame::getVehicleId, Frame::getFrameId, Frame::getTotalFrame, Frame::getGlobalTime, Frame::getLocalX, Frame::getLocalY,

@@ -16,111 +16,170 @@ import axios from 'axios';
 import * as THREE from 'three';
 
 const canvas = ref(null);
-const currentEventIndex = ref(0); // 当前变道事件索引
-const events = ref([]); // 存储后端返回的变道事件列表
-const animations = []; // 动画逻辑
+const currentEventIndex = ref(0); // 当前事件索引
+const events = ref([]); // 事件列表
+const animations = []; // 动画列表
+const labels = []; // 标签列表
 
-// 初始化 Three.js 场景
 const initSceneForEvent = (vehicleDataList) => {
   const scene = new THREE.Scene();
   const renderer = new THREE.WebGLRenderer({ canvas: canvas.value });
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(window.innerWidth* 0.6, window.innerHeight* 0.6);
 
+  // 设置摄像机为俯视视角
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 300, 0);
-  camera.lookAt(0, 0, 0);
+  const roadWidth = window.innerWidth * 0.6; // 道路宽度占场景 80%
+  console.log(roadWidth);
+  const roadLength = window.innerHeight * 0.6; // 道路长度占场景 80%
+  camera.position.set(roadWidth / 2, 380, -roadLength / 2); // 摄像机居中于道路
+  camera.lookAt(roadWidth / 2, 0, -roadLength / 2);
 
-  // 添加环境光和方向光
+  // 添加光源
   scene.add(new THREE.AmbientLight(0xffffff, 0.5));
   const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
   directionalLight.position.set(100, 200, 100);
   scene.add(directionalLight);
 
-  // 解析后端数据，创建车辆和轨迹
-  vehicleDataList.forEach((vehicleData) => {
-    const pathPoints = vehicleData.path.map((point) => new THREE.Vector3(point.globalX, 0, point.globalY));
-    const curve = new THREE.CatmullRomCurve3(pathPoints);
+  // 绘制道路
+  const laneCount = 10; // 车道数量
+  const laneWidth = roadWidth / laneCount; // 每个车道的宽度
+  const roadGeometry = new THREE.PlaneGeometry(roadWidth, roadLength);
+  const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, side: THREE.DoubleSide });
+  const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
+  roadMesh.rotation.x = -Math.PI / 2;
+  roadMesh.position.set(roadWidth / 2, 0, -roadLength / 2);
+  scene.add(roadMesh);
 
-    const carGeometry = new THREE.BoxGeometry(vehicleData.vLength, 5, vehicleData.vWidth);
-    const carMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-    const carMesh = new THREE.Mesh(carGeometry, carMaterial);
+  // 绘制车道分隔线
+  for (let i = 0; i <= laneCount; i++) {
+    const lineGeometry = new THREE.PlaneGeometry(2, roadLength);
+    const lineMaterial = new THREE.MeshStandardMaterial({
+      color: i === 5 ? 0xffff00 : 0xffffff, // 中心线为黄色，其余为白色
+      side: THREE.DoubleSide,
+    });
+    const lineMesh = new THREE.Mesh(lineGeometry, lineMaterial);
+
+    const xPosition = i * laneWidth; // 从道路起点计算车道线位置
+    lineMesh.position.set(xPosition, 0.1, -roadLength / 2);
+    lineMesh.rotation.x = -Math.PI / 2;
+    scene.add(lineMesh);
+  }
+
+  vehicleDataList.forEach((vehicleData) => {
+    const { vehicleId, frame, path } = vehicleData;
+
+    const initialPathPoint = path[0];
+    const initialX = initialPathPoint.localX + roadWidth / 2;
+    const initialY = -roadLength / 2 + initialPathPoint.localY;
+
+    console.log(vehicleId + ": " + "(" + initialX + "," + initialY + ")");
+
+    // 创建车辆
+    const sphereGeometry = new THREE.SphereGeometry(8, 32, 32);
+    const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+    const carMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
+
+    carMesh.position.set(initialX, 0, initialY);
     scene.add(carMesh);
 
-    // 动画逻辑
-    const animateCar = (progress) => {
-      const position = curve.getPoint(progress);
-      carMesh.position.set(position.x, position.y, position.z);
+    // 创建标签
+    const carLabel = document.createElement('div');
+    carLabel.className = 'car-label';
+    document.body.appendChild(carLabel);
+    labels.push(carLabel);
 
-      // 对齐车辆方向
-      const tangent = curve.getTangent(progress);
-      carMesh.rotation.y = Math.atan2(tangent.z, tangent.x);
+    // 动画控制
+    let currentProgress = 0;
+    const totalTime = 10000; // 动画总时间（毫秒）
+    const speedFactor = 1 / (totalTime / 16.67); // 动画每帧的进度增量
+
+    const animateCar = () => {
+      if (currentProgress < 1) {
+        const positionIndex = Math.floor(currentProgress * (path.length - 1));
+        const position = path[positionIndex];
+        const local_X = position.localX * 8;
+        const local_Y = position.localY * -1;
+        // 更新车辆位置
+        carMesh.position.set(local_X, 0, local_Y);
+
+        // 获取当前车道号
+        const laneId = frame[positionIndex].laneId;
+
+        // 转换为屏幕坐标
+        const screenPosition = new THREE.Vector3(local_X, 0, local_Y ).project(camera);
+        const screenX = (screenPosition.x+1.1) / 2 * window.innerWidth;
+        const screenY = (-screenPosition.y+0.8) / 2 * window.innerHeight;
+
+        carLabel.style.left = `${screenX}px`;
+        carLabel.style.top = `${screenY}px`;
+        carLabel.style.transform = 'translate(-50%, -50%)';
+        carLabel.style.display = screenPosition.z < 1 ? 'block' : 'none';
+        carLabel.innerHTML = `
+        车号: ${vehicleId} <br>
+        车道号: ${laneId}
+      `;
+
+        currentProgress += speedFactor;
+      }
     };
 
-    animations.push({ animateCar, progress: 0 });
+    animations.push(animateCar);
   });
+
 
   return { scene, renderer, camera };
 };
 
-// 渲染场景
 const renderScene = (scene, renderer, camera) => {
   const animate = () => {
     requestAnimationFrame(animate);
-
-    animations.forEach((animation) => {
-      animation.progress += 0.01;
-      if (animation.progress > 1) animation.progress = 0;
-      animation.animateCar(animation.progress);
-    });
-
+    animations.forEach((animateCar) => animateCar());
     renderer.render(scene, camera);
   };
   animate();
 };
 
-// 切换到下一个事件
-const loadNextEvent = () => {
-  if (currentEventIndex.value < events.value.length - 1) {
-    currentEventIndex.value += 1;
-    const { scene, renderer, camera } = initSceneForEvent(events.value[currentEventIndex.value].vehicleDataList);
-    renderScene(scene, renderer, camera);
-  }
-};
-
-// 切换到上一个事件
-const loadPreviousEvent = () => {
-  if (currentEventIndex.value > 0) {
-    currentEventIndex.value -= 1;
-    const { scene, renderer, camera } = initSceneForEvent(events.value[currentEventIndex.value].vehicleDataList);
-    renderScene(scene, renderer, camera);
-  }
-};
-
-// 加载后端数据
 const fetchChangeEventList = async (distanceThreshold, number) => {
   try {
-    const response = await axios.post('/vehicle/change-list', {
-      distanceThreshold,
-      number,
+    const response = await axios.get('http://localhost:8080/vehicle/change-list', {
+      headers: { "Cache-Control": "no-cache" },
+      params: { number, distanceThreshold },
     });
-    events.value = response.data.changeEventList;
-    // 初始化第一个事件
-    const { scene, renderer, camera } = initSceneForEvent(events.value[0].vehicleDataList);
-    renderScene(scene, renderer, camera);
+
+    events.value = response.data.changeEventList.map(event => event.vehicleDataList);
+    if (events.value.length > 0) {
+      const { scene, renderer, camera } = initSceneForEvent(events.value[currentEventIndex.value]);
+      renderScene(scene, renderer, camera);
+    }
   } catch (error) {
     console.error('Error fetching change event list:', error);
   }
 };
 
-// 加载事件数据
+const loadNextEvent = () => {
+  if (currentEventIndex.value < events.value.length - 1) {
+    currentEventIndex.value += 1;
+    const { scene, renderer, camera } = initSceneForEvent(events.value[currentEventIndex.value]);
+    renderScene(scene, renderer, camera);
+  }
+};
+
+const loadPreviousEvent = () => {
+  if (currentEventIndex.value > 0) {
+    currentEventIndex.value -= 1;
+    const { scene, renderer, camera } = initSceneForEvent(events.value[currentEventIndex.value]);
+    renderScene(scene, renderer, camera);
+  }
+};
+
 onMounted(() => {
-  const distanceThreshold = 50; // 示例参数
-  const number = 5;
+  const distanceThreshold = 30.0;
+  const number = 1;
+
   fetchChangeEventList(distanceThreshold, number);
 
-  // 监听窗口尺寸变化
   window.addEventListener('resize', () => {
-    const { renderer, camera } = initSceneForEvent(events.value[currentEventIndex.value].vehicleDataList);
+    const { renderer, camera } = initSceneForEvent(events.value[currentEventIndex.value]);
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -134,12 +193,14 @@ canvas {
   width: 100%;
   height: 100vh;
 }
+
 .control-panel {
   position: absolute;
   top: 10px;
   left: 10px;
   z-index: 100;
 }
+
 button {
   margin: 5px;
   padding: 10px;
@@ -149,8 +210,21 @@ button {
   border-radius: 5px;
   cursor: pointer;
 }
+
 button:disabled {
   background-color: #cccccc;
   cursor: not-allowed;
+}
+
+.car-label {
+  position: absolute;
+  color: white;
+  padding: 2px 5px;
+  background-color: rgba(0, 0, 0, 0.7);
+  border-radius: 3px;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 200;
+  transform: translate(-50%, -50%);
 }
 </style>
