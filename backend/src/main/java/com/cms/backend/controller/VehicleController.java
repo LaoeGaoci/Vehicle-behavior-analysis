@@ -26,72 +26,77 @@ import java.util.stream.Collectors;
 public class VehicleController {
 
     private final FrameService frameService;
-    private final static double timeWindow = 2;
+    private final static double timeWindow = 2; // 时间窗口
+
+    private final static double distanceThreshold = 100; // 距离限制
 
     public VehicleController(FrameService frameService) {
         this.frameService = frameService;
     }
 
     @GetMapping(value = "/change-list")
-    public ResponseEntity<ChangeEventList> getChangeEventList(@RequestParam Integer number, @RequestParam float distanceThreshold) {
-        System.out.println("Number: " + number);
-        System.out.println("DistanceThreshold: " + distanceThreshold);
-
+    public ResponseEntity<ChangeEventList> getChangeEventList(@RequestParam Integer number) {
         // 查询所有帧数据并按 globalTime 排序
         List<Frame> frames = frameService.list(
-                new LambdaQueryWrapper<Frame>().select(Frame::getVehicleId, Frame::getFrameId, Frame::getTotalFrame, Frame::getGlobalTime, Frame::getLocalX, Frame::getLocalY,
-                        Frame::getGlobalX, Frame::getGlobalY, Frame::getVLength, Frame::getVWidth, Frame::getVClass, Frame::getVelocity, Frame::getAcceleration, Frame::getLaneId,
-                        Frame::getPreceding, Frame::getFollowing, Frame::getSpaceHead, Frame::getTimeHead, Frame::getLocation)
+                new LambdaQueryWrapper<Frame>()
+                        .select(Frame::getVehicleId, Frame::getFrameId, Frame::getTotalFrame, Frame::getGlobalTime, Frame::getLocalX,
+                                Frame::getLocalY, Frame::getGlobalX, Frame::getGlobalY, Frame::getVLength, Frame::getVWidth,
+                                Frame::getVClass, Frame::getVelocity, Frame::getAcceleration, Frame::getLaneId, Frame::getPreceding,
+                                Frame::getFollowing, Frame::getSpaceHead, Frame::getTimeHead, Frame::getLocation)
         ).stream().sorted(Comparator.comparing(Frame::getGlobalTime)).toList();
 
         // 按 VehicleKey 分组
         Map<VehicleKey, List<Frame>> groupedFrames = frames.stream()
                 .collect(Collectors.groupingBy(frame -> new VehicleKey(
-                        frame.getVehicleId(),
-                        frame.getVLength(),
-                        frame.getVWidth(),
-                        frame.getVClass()
-                )));
+                        frame.getVehicleId(), frame.getVLength(), frame.getVWidth(), frame.getVClass())));
 
         List<ChangeEvent> changeEventList = new ArrayList<>();
 
         // 遍历分组数据，检测变道事件
         for (Map.Entry<VehicleKey, List<Frame>> entry : groupedFrames.entrySet()) {
             List<Frame> vehicleFrames = entry.getValue();
-
             for (int i = 1; i < vehicleFrames.size(); i++) {
                 Frame current = vehicleFrames.get(i);
                 Frame previous = vehicleFrames.get(i - 1);
 
                 // 检测变道
                 if (!Objects.equals(current.getLaneId(), previous.getLaneId())) {
-                    String changeTime = current.getGlobalTime(); // 换道时间
-                    long changeTimestamp = parseTimestamp(changeTime); // 转换为时间戳
-
+                    String changeTime = current.getGlobalTime();
+                    long changeTimestamp = parseTimestamp(changeTime);
                     if (changeTimestamp == -1) continue; // 无效时间，跳过
 
-                    ChangeEvent changeEvent = new ChangeEvent();
+                    // 获取变道后的第一帧
+                    Frame firstFrameAfterChange = vehicleFrames.stream()
+                            .filter(frame -> parseTimestamp(frame.getGlobalTime()) > changeTimestamp)
+                            .findFirst()
+                            .orElse(null);
+
+                    // 检查第一帧数据中的是否有前后车，如果没有，则跳过这个变道事件
+                    if (firstFrameAfterChange != null && (firstFrameAfterChange.getPreceding() == 0 || firstFrameAfterChange.getFollowing() == 0)) {
+                        continue;
+                    }
+
+                    // 获取变道前后的车道号
+                    int currentLaneId = current.getLaneId();
+                    int previousLaneId = previous.getLaneId();
 
                     // 构建变道车辆数据
                     VehicleList changingVehicle = buildVehicleData(vehicleFrames, changeTimestamp);
 
-                    // 构建时间窗口内的周围车辆数据，加入距离过滤
-                    List<VehicleList> surroundingVehicles = groupedFrames.entrySet().stream()
-                            .filter(neighborEntry -> {
-                                return !neighborEntry.getKey().getVehicleId().equals(changingVehicle.getVehicleId()); // 排除变道车辆自己
-                            })
-                            .map(neighborEntry -> buildFilteredVehicleData(
-                                    neighborEntry.getValue(), changeTimestamp, changingVehicle, distanceThreshold
-                            ))
-                            .filter(Objects::nonNull)
-                            .toList();
+                    // 查找周围车辆
+                    List<VehicleList> surroundingVehicles = findSurroundingVehicles(frames, changingVehicle, changeTimestamp, currentLaneId, previousLaneId);
 
-                    // 组合变道事件
+                    // 如果变道时周围没有车辆，则跳过此变道事件
+                    if (surroundingVehicles.isEmpty()) {
+                        continue;
+                    }
+
+                    // 将数据组合
                     List<VehicleList> allVehicles = new ArrayList<>();
                     allVehicles.add(changingVehicle);
                     allVehicles.addAll(surroundingVehicles);
 
-                    changeEvent.setVehicleDataList(allVehicles);
+                    ChangeEvent changeEvent = new ChangeEvent(allVehicles);
                     changeEventList.add(changeEvent);
 
                     // 达到指定数量后返回
@@ -107,6 +112,7 @@ public class VehicleController {
         return ResponseEntity.ok(new ChangeEventList(changeEventList));
     }
 
+    // 解析时间戳算法
     private long parseTimestamp(String globalTime) {
         try {
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(ZoneOffset.UTC);
@@ -117,31 +123,56 @@ public class VehicleController {
         }
     }
 
-    private VehicleList buildFilteredVehicleData(List<Frame> frames, long baseTimestamp, VehicleList changingVehicle, float distanceThreshold) {
-        VehicleList vehicleData = buildVehicleData(frames, baseTimestamp);
+    // 查找周围车辆算法
+    private List<VehicleList> findSurroundingVehicles(List<Frame> frames, VehicleList changingVehicle, long changeTimestamp, int currentLaneId, int previousLaneId) {
+        // 构建周围车辆集合
+        List<VehicleList> surroundingVehicles = new ArrayList<>();
 
-        // 如果车辆无有效帧，直接返回 null
-        if (vehicleData.getFrame().isEmpty() || vehicleData.getPath().isEmpty()) {
-            return null;
+        // 获取变道车辆的 localY
+        float changingVehicleLocalY = changingVehicle.getPath().getFirst().getLocalY();
+
+        // 查找变道前后一刻所在车道和变道后车道的车辆
+        List<Frame> relevantFramesByLaneId = frames.stream()
+                .filter(frame ->
+                        (frame.getLaneId() == currentLaneId || frame.getLaneId() == previousLaneId) &&
+                                (parseTimestamp(frame.getGlobalTime()) == changeTimestamp)
+                )
+                .toList();
+
+        // 筛选出与变道车辆的 localY 距离差不超过限定范围的车辆
+        List<Frame> relevantFramesByLocalY = relevantFramesByLaneId.stream()
+                .filter(frame -> Math.abs(frame.getLocalY() - changingVehicleLocalY) <= distanceThreshold)
+                .toList();
+
+        // 排除变道车辆本身
+        List<Frame> relevantFrames = relevantFramesByLocalY.stream()
+                .filter(frame -> !Objects.equals(frame.getVehicleId(), changingVehicle.getVehicleId()))
+                .toList();
+
+        // 提取车辆的 VehicleKey
+        Set<VehicleKey> vehicleKeys = relevantFrames.stream()
+                .map(frame -> new VehicleKey(
+                        frame.getVehicleId(), frame.getVLength(), frame.getVWidth(), frame.getVClass()))
+                .collect(Collectors.toSet());
+
+        // 查找车辆的轨迹数据
+        Map<VehicleKey, List<Frame>> groupedFrames = frames.stream()
+                .filter(frame -> vehicleKeys.contains(new VehicleKey(
+                        frame.getVehicleId(), frame.getVLength(), frame.getVWidth(), frame.getVClass())))
+                .collect(Collectors.groupingBy(frame -> new VehicleKey(
+                        frame.getVehicleId(), frame.getVLength(), frame.getVWidth(), frame.getVClass())));
+
+        // 构建车辆的轨迹数据
+        for (Map.Entry<VehicleKey, List<Frame>> entry : groupedFrames.entrySet()) {
+            List<Frame> vehicleFrames = entry.getValue();
+            VehicleList vehicleData = buildVehicleData(vehicleFrames, changeTimestamp);
+            surroundingVehicles.add(vehicleData);
         }
 
-        // 计算与变道车辆的最近距离
-        double minDistance = changingVehicle.getPath().stream()
-                .flatMap(changingPath -> vehicleData.getPath().stream()
-                        .map(neighborPath -> calculateDistance(
-                                changingPath.getLocalX(), changingPath.getLocalY(),
-                                neighborPath.getLocalX(), neighborPath.getLocalY()
-                        )))
-                .min(Double::compareTo)
-                .orElse(Double.MAX_VALUE);
-
-        return minDistance <= distanceThreshold ? vehicleData : null;
+        return surroundingVehicles;
     }
 
-    private double calculateDistance(float x1, float y1, float x2, float y2) {
-        return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2));
-    }
-
+    // 构建车辆数据算法
     private VehicleList buildVehicleData(List<Frame> frames, long baseTimestamp) {
         VehicleList vehicleData = new VehicleList();
         if (frames == null || frames.isEmpty()) {
@@ -203,26 +234,21 @@ public class VehicleController {
         }
     }
 
+
     @Data
     @AllArgsConstructor
-    public static class FrameData {
-        private String globalTime;
-        private Integer laneId;
-        private float velocity;
-        private float acceleration;
+    public static class ChangeEventList {
+        private List<ChangeEvent> changeEventList;
     }
 
     @Data
     @AllArgsConstructor
-    public static class PathData {
-        private float localX;
-        private float localY;
+    public static class ChangeEvent {
+        private List<VehicleList> vehicleDataList;
     }
 
     @Data
-    @AllArgsConstructor
     public static class VehicleList {
-        @JsonProperty("vehicleId")
         private Integer vehicleId;
         @JsonProperty("vClass")
         private Integer vClass;
@@ -230,27 +256,33 @@ public class VehicleController {
         private float vLength;
         @JsonProperty("vWidth")
         private float vWidth;
-        @JsonProperty("frame")
         private List<FrameData> frame;
-        @JsonProperty("path")
         private List<PathData> path;
+    }
 
-        public VehicleList() {
+    @Data
+    public static class FrameData {
+        private String globalTime;
+        private Integer laneId;
+        private float velocity;
+        private float acceleration;
+
+        public FrameData(String globalTime, Integer laneId, float velocity, float acceleration) {
+            this.globalTime = globalTime;
+            this.laneId = laneId;
+            this.velocity = velocity;
+            this.acceleration = acceleration;
         }
     }
 
     @Data
-    @AllArgsConstructor
-    public static class ChangeEvent {
-        private List<VehicleList> vehicleDataList;
+    public static class PathData {
+        private float localX;
+        private float localY;
 
-        public ChangeEvent() {
+        public PathData(float localX, float localY) {
+            this.localX = localX;
+            this.localY = localY;
         }
-    }
-
-    @Data
-    @AllArgsConstructor
-    public static class ChangeEventList {
-        private List<ChangeEvent> changeEventList;
     }
 }
