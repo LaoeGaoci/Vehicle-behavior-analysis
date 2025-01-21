@@ -26,7 +26,8 @@ import java.util.stream.Collectors;
 public class VehicleController {
 
     private final FrameService frameService;
-    private final static double timeWindow = 2; // 时间窗口
+
+    private final static double timeWindow = 10; // 时间窗口
 
     private final static double distanceThreshold = 100; // 距离限制
 
@@ -71,9 +72,32 @@ public class VehicleController {
                             .findFirst()
                             .orElse(null);
 
-                    // 检查第一帧数据中的是否有前后车，如果没有，则跳过这个变道事件
-                    if (firstFrameAfterChange != null && (firstFrameAfterChange.getPreceding() == 0 || firstFrameAfterChange.getFollowing() == 0)) {
-                        continue;
+                    // 检查在这一帧的时间是否满足前后车条件
+                    if (firstFrameAfterChange != null) {
+                        float changingVehicleLocalY = firstFrameAfterChange.getLocalY();
+                        int changingVehicleLaneId = firstFrameAfterChange.getLaneId();
+                        int changingVehicleId = firstFrameAfterChange.getVehicleId();
+
+                        // 是否存在一辆车的 localY 小于变道车辆的 localY 并在范围内，且车道号相同，排除变道车辆本身
+                        boolean hasPrecedingVehicle = frames.stream()
+                                .filter(frame -> parseTimestamp(frame.getGlobalTime()) == parseTimestamp(firstFrameAfterChange.getGlobalTime())) // 时间匹配
+                                .filter(frame -> frame.getVehicleId() != changingVehicleId) // 排除变道车辆本身
+                                .anyMatch(frame -> frame.getLaneId() == changingVehicleLaneId && // 车道号相同
+                                        frame.getLocalY() < changingVehicleLocalY &&
+                                        Math.abs(frame.getLocalY() - changingVehicleLocalY) <= distanceThreshold);
+
+                        // 是否存在一辆车的 localY 大于变道车辆的 localY 并在范围内，且车道号相同，排除变道车辆本身
+                        boolean hasFollowingVehicle = frames.stream()
+                                .filter(frame -> parseTimestamp(frame.getGlobalTime()) == parseTimestamp(firstFrameAfterChange.getGlobalTime())) // 时间匹配
+                                .filter(frame -> frame.getVehicleId() != changingVehicleId) // 排除变道车辆本身
+                                .anyMatch(frame -> frame.getLaneId() == changingVehicleLaneId && // 车道号相同
+                                        frame.getLocalY() > changingVehicleLocalY &&
+                                        Math.abs(frame.getLocalY() - changingVehicleLocalY) <= distanceThreshold);
+
+                        // 如果不满足条件，则跳过此变道事件
+                        if (!hasPrecedingVehicle || !hasFollowingVehicle) {
+                            continue;
+                        }
                     }
 
                     // 获取变道前后的车道号
@@ -82,6 +106,25 @@ public class VehicleController {
 
                     // 构建变道车辆数据
                     VehicleList changingVehicle = buildVehicleData(vehicleFrames, changeTimestamp);
+
+                    // 检查变道车辆的轨迹时间是否满足时间窗口要求
+                    long startTime = changeTimestamp - (long) (timeWindow * 1000); // 时间窗口开始时间
+                    long endTime = changeTimestamp + (long) (timeWindow * 1000);   // 时间窗口结束时间
+
+                    // 获取变道车辆轨迹中的最早和最晚时间戳
+                    Optional<Long> minTimestamp = vehicleFrames.stream()
+                            .map(frame -> parseTimestamp(frame.getGlobalTime()))
+                            .min(Long::compare);
+
+                    Optional<Long> maxTimestamp = vehicleFrames.stream()
+                            .map(frame -> parseTimestamp(frame.getGlobalTime()))
+                            .max(Long::compare);
+
+                    // 如果轨迹时间不足以覆盖时间窗口，则跳过该变道事件
+                    if (minTimestamp.isEmpty() || maxTimestamp.isEmpty() ||
+                            minTimestamp.get() > startTime || maxTimestamp.get() < endTime) {
+                        continue;
+                    }
 
                     // 查找周围车辆
                     List<VehicleList> surroundingVehicles = findSurroundingVehicles(frames, changingVehicle, changeTimestamp, currentLaneId, previousLaneId);
