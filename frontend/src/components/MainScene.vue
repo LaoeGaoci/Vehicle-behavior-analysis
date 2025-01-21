@@ -3,7 +3,8 @@
     <!-- 控制面板 -->
     <div class="control-panel">
       <button @click="loadPreviousEvent" :disabled="currentEventIndex === 0">Previous Event</button>
-      <button @click="loadNextEvent" :disabled="currentEventIndex === events.length - 1">Next Event</button>
+      <button @click="loadNextEvent" :disabled="currentEventIndex === totalLength - 1">Next Event</button>
+      <Button type="button" label="Search" icon="pi pi-search" :loading="loading" @click="load" />
     </div>
     <!-- Three.js Canvas -->
     <canvas ref="canvas"></canvas>
@@ -11,27 +12,32 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import {ref, onMounted, toRaw} from 'vue';
 import axios from 'axios';
 import * as THREE from 'three';
+
+import Button from 'primevue/button';
+import 'primeicons/primeicons.css';
 
 const canvas = ref(null);
 const currentEventIndex = ref(0); // 当前事件索引
 const events = ref([]); // 事件列表
 const animations = []; // 动画列表
 const labels = []; // 标签列表
+let totalLength = 0;//动画数量
+let totalevents;
 
 const initSceneForEvent = (vehicleDataList) => {
   const scene = new THREE.Scene();
   const renderer = new THREE.WebGLRenderer({ canvas: canvas.value });
-  renderer.setSize(window.innerWidth* 0.6, window.innerHeight* 0.6);
+  renderer.setSize(window.innerWidth*0.8, window.innerHeight);
 
   // 设置摄像机为俯视视角
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   const roadWidth = window.innerWidth * 0.6; // 道路宽度占场景 80%
   console.log(roadWidth);
-  const roadLength = window.innerHeight * 0.6; // 道路长度占场景 80%
-  camera.position.set(roadWidth / 2, 380, -roadLength / 2); // 摄像机居中于道路
+  const roadLength = window.innerHeight * 0.8; // 道路长度占场景 80%
+  camera.position.set(roadWidth / 2, 500, -roadLength / 2); // 摄像机居中于道路
   camera.lookAt(roadWidth / 2, 0, -roadLength / 2);
 
   // 添加光源
@@ -118,7 +124,6 @@ const initSceneForEvent = (vehicleDataList) => {
         车号: ${vehicleId} <br>
         车道号: ${laneId}
       `;
-
         currentProgress += speedFactor;
       }
     };
@@ -139,6 +144,7 @@ const renderScene = (scene, renderer, camera) => {
   animate();
 };
 
+//后端数据获取
 const fetchChangeEventList = async (distanceThreshold, number) => {
   try {
     const response = await axios.get('http://localhost:8080/vehicle/change-list', {
@@ -147,8 +153,13 @@ const fetchChangeEventList = async (distanceThreshold, number) => {
     });
 
     events.value = response.data.changeEventList.map(event => event.vehicleDataList);
-    if (events.value.length > 0) {
-      const { scene, renderer, camera } = initSceneForEvent(events.value[currentEventIndex.value]);
+    totalevents = toRaw(events.value);
+    console.log(totalevents);
+    totalLength =totalevents.length;
+    console.log('Total length:', totalLength);
+
+    if (totalLength > 0) {
+      const { scene, renderer, camera } = initSceneForEvent(totalevents[currentEventIndex.value]);
       renderScene(scene, renderer, camera);
     }
   } catch (error) {
@@ -157,29 +168,32 @@ const fetchChangeEventList = async (distanceThreshold, number) => {
 };
 
 const loadNextEvent = () => {
-  if (currentEventIndex.value < events.value.length - 1) {
+  console.log("当前动画"+currentEventIndex.value+"转到下一个动画");
+  if (currentEventIndex.value < totalLength - 1) {
     currentEventIndex.value += 1;
-    const { scene, renderer, camera } = initSceneForEvent(events.value[currentEventIndex.value]);
+    console.log(totalevents[currentEventIndex.value]);
+    const { scene, renderer, camera } = initSceneForEvent(totalevents[currentEventIndex.value]);
     renderScene(scene, renderer, camera);
   }
 };
 
 const loadPreviousEvent = () => {
+  console.log("当前动画"+currentEventIndex.value+"转到上一个动画");
   if (currentEventIndex.value > 0) {
     currentEventIndex.value -= 1;
-    const { scene, renderer, camera } = initSceneForEvent(events.value[currentEventIndex.value]);
+    const { scene, renderer, camera } = initSceneForEvent(totalevents[currentEventIndex.value]);
     renderScene(scene, renderer, camera);
   }
 };
 
 onMounted(() => {
   const distanceThreshold = 30.0;
-  const number = 1;
+  const number = 3;
 
   fetchChangeEventList(distanceThreshold, number);
 
   window.addEventListener('resize', () => {
-    const { renderer, camera } = initSceneForEvent(events.value[currentEventIndex.value]);
+    const { renderer, camera } = initSceneForEvent(totalevents[currentEventIndex.value]);
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
