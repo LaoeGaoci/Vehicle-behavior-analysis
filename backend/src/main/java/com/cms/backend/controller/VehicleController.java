@@ -29,8 +29,8 @@ public class VehicleController {
 
     private final static double timeWindow = 10; // 时间窗口
 
-    private final static double distanceThreshold = 100; // 距离限制
-
+    private final static double distanceThreshold = 50; // 距离限制
+    float changingVehicleLocalY;
     public VehicleController(FrameService frameService) {
         this.frameService = frameService;
     }
@@ -74,7 +74,7 @@ public class VehicleController {
 
                     // 检查在这一帧的时间是否满足前后车条件
                     if (firstFrameAfterChange != null) {
-                        float changingVehicleLocalY = firstFrameAfterChange.getLocalY();
+                        changingVehicleLocalY = firstFrameAfterChange.getLocalY();
                         int changingVehicleLaneId = firstFrameAfterChange.getLaneId();
                         int changingVehicleId = firstFrameAfterChange.getVehicleId();
 
@@ -127,7 +127,7 @@ public class VehicleController {
                     }
 
                     // 查找周围车辆
-                    List<VehicleList> surroundingVehicles = findSurroundingVehicles(frames, changingVehicle, changeTimestamp, currentLaneId, previousLaneId);
+                    List<VehicleList> surroundingVehicles = findSurroundingVehicles(frames, changingVehicle, changeTimestamp, currentLaneId, previousLaneId,changingVehicleLocalY);
 
                     // 如果变道时周围没有车辆，则跳过此变道事件
                     if (surroundingVehicles.isEmpty()) {
@@ -166,13 +166,11 @@ public class VehicleController {
         }
     }
 
-    // 查找周围车辆算法
-    private List<VehicleList> findSurroundingVehicles(List<Frame> frames, VehicleList changingVehicle, long changeTimestamp, int currentLaneId, int previousLaneId) {
+    private List<VehicleList> findSurroundingVehicles(List<Frame> frames, VehicleList changingVehicle,
+                                                      long changeTimestamp, int currentLaneId, int previousLaneId,
+                                                      float changingVehicleLocalY) {
         // 构建周围车辆集合
         List<VehicleList> surroundingVehicles = new ArrayList<>();
-
-        // 获取变道车辆的 localY
-        float changingVehicleLocalY = changingVehicle.getPath().getFirst().getLocalY();
 
         // 查找变道前后一刻所在车道和变道后车道的车辆
         List<Frame> relevantFramesByLaneId = frames.stream()
@@ -214,6 +212,7 @@ public class VehicleController {
 
         return surroundingVehicles;
     }
+
 
     // 构建车辆数据算法
     private VehicleList buildVehicleData(List<Frame> frames, long baseTimestamp) {

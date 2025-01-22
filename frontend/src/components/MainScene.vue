@@ -36,8 +36,8 @@ const initSceneForEvent = (vehicleDataList) => {
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   const roadWidth = window.innerWidth * 0.6; // 道路宽度占场景 80%
   console.log(roadWidth);
-  const roadLength = window.innerHeight * 0.8; // 道路长度占场景 80%
-  camera.position.set(roadWidth / 2, 500, -roadLength / 2); // 摄像机居中于道路
+  const roadLength = window.innerHeight*1.5; // 道路长度占场景 80%
+  camera.position.set(roadWidth / 2, 800, -roadLength / 2); // 摄像机居中于道路
   camera.lookAt(roadWidth / 2, 0, -roadLength / 2);
 
   // 添加光源
@@ -96,7 +96,7 @@ const initSceneForEvent = (vehicleDataList) => {
 
     // 动画控制
     let currentProgress = 0;
-    const totalTime = 10000; // 动画总时间（毫秒）
+    const totalTime = 50000; // 动画总时间（毫秒）
     const speedFactor = 1 / (totalTime / 16.67); // 动画每帧的进度增量
 
     const animateCar = () => {
