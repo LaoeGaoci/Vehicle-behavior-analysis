@@ -1,0 +1,54 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  .control-panel {
+    height: 100%;
+
+    .control {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center; /* 垂直居中 */
+      justify-content: space-between; /* 在容器内上下对齐 */
+      gap: 30px; /* 子元素之间的间距 */
+
+      .event_number {
+        margin-top: 10px;
+        width: 100%;
+        padding: 0.5rem;
+        border-radius: 4px;
+        font-size: 1rem;
+      }
+
+      .display_index {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-left: 5px;
+        margin-top: 30px;
+      }
+
+      .answer {
+        width: 100%;
+        padding: 0.5rem;
+        border-radius: 4px;
+        font-size: 1rem;
+        margin-top: 30px;
+      }
+    }
+  }
+  .animation-panel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* 垂直居中 */
+    justify-content: space-between; /* 在容器内上下对齐 */
+
+    .animation {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+
+}
