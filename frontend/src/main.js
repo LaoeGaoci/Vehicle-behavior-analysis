@@ -119,7 +119,7 @@ import '@/assets/styles.scss'
 const app = createApp(App)
 // 视频播放组件
 app.use(vue3videoPlay)
-//由于axios不是vue的插件，不能使用Vue.use(),要通过控制原型链的方式来引入
+
 app.use(router)
 app.use(PrimeVue, { ripple: true })
 app.use(ToastService)
