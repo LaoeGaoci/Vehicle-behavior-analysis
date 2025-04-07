@@ -7,6 +7,11 @@ import matplotlib.animation as animation
 import matplotlib.image as mpimg
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from scipy.spatial import KDTree
+from pykalman import KalmanFilter
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
+from sklearn.preprocessing import StandardScaler
+
 
 # 设置文件夹路径
 json_folder = "../data/video_data/"
@@ -24,16 +29,44 @@ first_motorcycle_img = mpimg.imread('../image/car_class/first_motorcycle.png')
 first_auto_img = mpimg.imread('../image/car_class/first_auto.png')
 first_truck_img = mpimg.imread('../image/car_class/first_truck.png')
 
-
-# 获取所有 JSON 文件
-json_files = [f for f in os.listdir(json_folder) if f.endswith(".json")]
-
 # 单位换算因子(英尺转米)
 FEET_TO_METERS = 0.3048
 
 # 设定全屏幕绘制的场景范围
 SCREEN_X_MIN, SCREEN_X_MAX = 0, 10
 SCREEN_Y_MIN, SCREEN_Y_MAX = -50, 300
+
+# 获取所有 JSON 文件
+json_files = [f for f in os.listdir(json_folder) if f.endswith(".json")]
+
+# 卡尔曼滤波器
+
+def kalman_smoothing(y):
+    """ 使用卡尔曼滤波器对轨迹进行平滑 """
+    kf = KalmanFilter(initial_state_mean=[y[0], 0], n_dim_obs=1, n_dim_state=2)
+    kf.transition_matrices = [[1, 1], [0, 1]]  # 状态转移矩阵
+    kf.observation_matrices = [[1, 0]]  # 观测矩阵
+    smoothed_state_means, _ = kf.smooth(y.reshape(-1, 1))
+    return smoothed_state_means[:, 0]  # 仅返回平滑后的轨迹
+
+def gpr_smoothing(x, y):
+    """ 使用高斯过程回归（GPR）进行轨迹平滑 """
+    x = x.reshape(-1, 1)  # GPR 需要二维输入
+
+    # 归一化数据
+    scaler_x = StandardScaler()
+    scaler_y = StandardScaler()
+    x_scaled = scaler_x.fit_transform(x)
+    y_scaled = scaler_y.fit_transform(y.reshape(-1, 1)).flatten()
+
+    # **调整核函数参数**
+    kernel = C(1.0, (1e-2, 1e3)) * RBF(length_scale=10, length_scale_bounds=(1, 100))
+    gpr = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=30)
+    gpr.fit(x_scaled, y_scaled)  # 拟合归一化数据
+
+    # 预测并反归一化
+    y_pred_scaled = gpr.predict(x_scaled)
+    return scaler_y.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
 
 # 遍历每个 JSON 文件并处理
 for json_file in json_files:
@@ -61,7 +94,8 @@ for json_file in json_files:
                             "vClass": v_class,
                             "localX": point["localX"] * FEET_TO_METERS,  # X 轴转换为米，但不缩放
                             "localY": point["localY"] * FEET_TO_METERS,  # Y 轴转换为米并缩放
-                            "laneId": frame["laneId"]
+                            "laneId": frame["laneId"],
+                            "velocity": frame["velocity"] * FEET_TO_METERS  # 速度转换为米/秒
                         })
 
         if not vehicle_paths:
@@ -82,6 +116,20 @@ for json_file in json_files:
 
         # 仅对 Y 轴进行等比缩放
         df_paths["localY"] = (df_paths["localY"] - data_y_min) * scale_y + SCREEN_Y_MIN
+        # 先使用卡尔曼滤波进行平滑处理
+        for vid in unique_vehicles:
+            mask = df_paths["vehicleId"] == vid
+            if len(df_paths[mask]) > 3:  # 至少需要3个点才能进行滤波
+                df_paths.loc[mask, "localX"] = kalman_smoothing(df_paths.loc[mask, "localX"].values)
+                df_paths.loc[mask, "localY"] = kalman_smoothing(df_paths.loc[mask, "localY"].values)
+
+        # 再使用 GPR 进行更精细的平滑处理
+        for vid in unique_vehicles:
+            mask = df_paths["vehicleId"] == vid
+            if len(df_paths[mask]) > 3:
+                df_paths.loc[mask, "localX"] = gpr_smoothing(df_paths.loc[mask, "localX"].index.values, df_paths.loc[mask, "localX"].values)
+                df_paths.loc[mask, "localY"] = gpr_smoothing(df_paths.loc[mask, "localY"].index.values, df_paths.loc[mask, "localY"].values)
+
 
         # 获取第一辆车的 ID
         first_vehicle_id = unique_vehicles[0] if len(unique_vehicles) > 0 else None
@@ -107,7 +155,7 @@ for json_file in json_files:
             # 车辆分类
             if v_class == 1:
                 img = motorcycle_img
-                zoom = 0.05
+                zoom = 0.02
             elif v_class == 2:
                 img = auto_img
                 zoom = 0.067
