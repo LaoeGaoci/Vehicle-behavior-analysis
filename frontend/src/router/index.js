@@ -13,16 +13,7 @@ const router = createRouter({
           path: '/',
           name: 'dashboard',
           component: () => import('@/components/MainScene.vue')
-        },
-        {
-          path: '/auth/collections',
-          name: 'collections',
-          component: () => import('@/pages/auth/Collections.vue')
-        },{
-          path: '/auth/usermanger',
-          name: 'usermanger',
-          component: () => import('@/pages/auth/UserManger.vue')
-        },
+        }
       ]
     },
     {

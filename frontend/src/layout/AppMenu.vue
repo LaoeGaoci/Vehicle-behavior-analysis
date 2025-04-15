@@ -8,31 +8,7 @@ const model = ref([
   {
     label: 'Home',
     items: [{ label: '主界面', icon: 'pi pi-fw pi-home', to: '/' }]
-  },
-  {
-    label: 'Pages',
-    icon: 'pi pi-fw pi-briefcase',
-    to: '/pages',
-    items: [
-      {
-        label: '用户',
-        icon: 'pi pi-fw pi-user',
-        items: [
-          {
-            label: '历史记录',
-            icon: 'pi pi-fw pi-star',
-            to: '/auth/collections'
-          },
-          {
-            label: '个人信息',
-            icon: 'pi pi-fw pi-home',
-            to: '/auth/usermanger'
-          },
-
-        ]
-      },
-    ]
-  },
+  }
 ]);
 </script>
 

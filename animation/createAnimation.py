@@ -155,10 +155,10 @@ for json_file in json_files:
             # 车辆分类
             if v_class == 1:
                 img = motorcycle_img
-                zoom = 0.02
+                zoom = 0.1
             elif v_class == 2:
                 img = auto_img
-                zoom = 0.067
+                zoom = 0.06
             else:
                 img = truck_img
                 zoom = 0.13
@@ -173,10 +173,10 @@ for json_file in json_files:
             if vid == first_vehicle_id:
                 if v_class == 1:
                     img = motorcycle_img
-                    zoom = 0.05
+                    zoom = 0.1
                 elif v_class == 2:
                     img = auto_img
-                    zoom = 0.067
+                    zoom = 0.06
                 else:
                     img = truck_img
                     zoom = 0.13
@@ -215,10 +215,10 @@ for json_file in json_files:
                         # 根据车辆类型选择相应的图像
                         if v_class == 1:
                             img = first_motorcycle_img
-                            zoom = 0.05
+                            zoom = 0.1
                         elif v_class == 2:
                             img = first_auto_img
-                            zoom = 0.067
+                            zoom = 0.06
                         else:
                             img = first_truck_img
                             zoom = 0.13

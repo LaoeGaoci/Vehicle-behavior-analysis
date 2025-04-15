@@ -81,57 +81,54 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { useLayout } from '@/layout/composables/layout'
-import AppConfig from '@/layout/AppConfig.vue'
-import axios from 'axios'
-import { useRouter } from 'vue-router'
+import {ref, onMounted, computed} from 'vue';
+import { useStore } from 'vuex';
 import { useToast } from 'primevue/usetoast';
-//提示
+import axios from 'axios';
+import { useRouter } from 'vue-router';
+const logoUrl = computed(() => {
+  return "/layout/images/logo-white.png"
+})
+const store = useStore();
 const toast = useToast();
-
-const router = useRouter()
-const { layoutConfig } = useLayout()
+const router = useRouter();
 
 // 注册表单数据
-const accountName = ref('')
-const age = ref(null)
-const drivingExperience = ref(null)
-const gender = ref('')
+const accountName = ref('');
+const age = ref(null);
+const drivingExperience = ref(null);
+const gender = ref('');
 
-// 根据主题动态计算 logo 地址
-const logoUrl = computed(() => {
-  return `/layout/images/${layoutConfig.darkTheme.value ? 'logo-white' : 'logo-dark'}.png`
-})
-
-// 注册函数：收集表单数据并传递给后端
+// 注册函数
 const register = async () => {
+  console.log(accountName.value + " " + age.value + " " + drivingExperience.value + " " + gender.value);
   if (!accountName.value || age.value === null || drivingExperience.value === null || !gender.value) {
-    // alert('请填写完整的注册信息')
-    toast.add({ severity: 'warn', summary: 'Warn Message', detail: '请填写完整的注册信息',group: 'tr', life: 3000 });
-    return
-  }
-  const payload = {
-    accountName: accountName.value,
-    age: age.value,
-    drivingExperience: drivingExperience.value,
-    gender: gender.value
+    toast.add({ severity: 'warn', summary: 'Warn Message', detail: '请填写完整的注册信息', group: 'tr', life: 3000 });
+    return;
   }
   try {
-    const response = await axios.post('http://localhost:8080/user/login', payload, {
-      headers: { 'Content-Type': 'application/json' }
-    })
+    const response = await axios.post('http://localhost:8080/user', {
+      username: accountName.value,
+      age: age.value,
+      driver_years: drivingExperience.value,
+      gender: gender.value,
+    });
     if (response.status === 200) {
-      toast.add({ severity: 'success', summary: '登录成功', group: 'tr',life: 3000 });
-      router.push('/')
+      // 更新 Vuex 中的账户名称
+      store.dispatch('updateAccountName', accountName.value);
+      // 将 accountName 保存在 localStorage 中
+      localStorage.setItem('username', accountName.value);
+
+      toast.add({ severity: 'success', summary: '注册成功', group: 'tr', life: 3000 });
+      router.push('/');
     } else {
-      alert('注册失败，请重试')
+      alert('注册失败，请重试');
     }
   } catch (error) {
-    console.error('注册出错：', error)
-    toast.add({ severity: 'error', summary: '注册出错', detail: error,group: 'tr', life: 3000 });
+    console.error('注册出错：', error);
+    toast.add({ severity: 'error', summary: '注册出错', detail: error, group: 'tr', life: 3000 });
   }
-}
+};
 </script>
 
 <style scoped>

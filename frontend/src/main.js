@@ -115,10 +115,12 @@ import 'vue3-video-play/dist/style.css'
 
 
 import '@/assets/styles.scss'
+import store from './store';
 
 const app = createApp(App)
 // 视频播放组件
 app.use(vue3videoPlay)
+app.use(store)
 
 app.use(router)
 app.use(PrimeVue, { ripple: true })

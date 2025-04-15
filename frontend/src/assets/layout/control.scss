@@ -34,6 +34,7 @@
     align-items: center;
   }
   .show-index{
+    margin-left: 100px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -63,6 +64,10 @@
       padding: 8px 16px;
       font-size: 14px;
     }
+    .warn{
+      background-color: #ffcb1e;
+      border: 1px solid #ffdc68;
+    }
   }
 
   /* score-description：排列下方，字体大小适中 */
@@ -83,6 +88,7 @@
 }
 .horizontal-layout {
   display: flex;
+  flex-direction: column;
+  gap: 20px;
   align-items: center; // 垂直居中
-  gap: 4rem;         // 两个元素之间的间距
 }
